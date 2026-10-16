@@ -1,0 +1,1683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>茉莉白月光：像素横版大冒险 (Phaser 3 单文件模块化版)</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      overflow-x: hidden;
+    }
+    .pixel-font {
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.04em;
+    }
+    #game-wrapper canvas {
+      display: block;
+      width: 100% !important;
+      height: auto !important;
+      max-height: 72vh;
+      object-fit: contain;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      border-radius: 0.75rem;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(148, 163, 184, 0.2);
+    }
+    .touch-btn {
+      touch-action: manipulation;
+      transition: transform 0.08s ease, background-color 0.1s ease;
+    }
+    .touch-btn:active, .touch-btn.active {
+      transform: scale(0.92);
+      background-color: rgba(56, 189, 248, 0.35) !important;
+      border-color: #38bdf8 !important;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between bg-slate-950 text-slate-100 p-2 sm:p-4">
+
+  <!-- 顶部状态与控制栏 -->
+  <header class="w-full max-w-5xl mx-auto mb-2 flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 border border-slate-800 px-3 py-2 rounded-xl backdrop-blur">
+    <div class="flex items-center gap-2.5">
+      <canvas id="avatar-preview" width="36" height="36" class="rounded-lg bg-slate-800 border border-slate-700" style="image-rendering: pixelated;"></canvas>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-sm sm:text-base font-bold text-white tracking-tight">茉莉白月光 · 像素闯关</h1>
+          <span id="ui-level-badge" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 pixel-font">第 1 关</span>
+        </div>
+        <p class="text-[11px] text-slate-400 hidden sm:block">短发白立领衬衫女孩 · 二段跳 / 踩怪 / 存档点 / 移动平台</p>
+      </div>
+    </div>
+
+    <!-- 实时 HUD 数据 -->
+    <div class="flex items-center gap-3 sm:gap-5 pixel-font text-xs sm:text-sm bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800">
+      <div class="flex items-center gap-1" title="生命值">
+        <span class="text-rose-400">♥</span>
+        <span id="ui-hp" class="font-bold text-rose-300">3/3</span>
+      </div>
+      <div class="flex items-center gap-1" title="收集金币">
+        <span class="text-amber-400">●</span>
+        <span id="ui-coins" class="font-bold text-amber-300">0/0</span>
+      </div>
+      <div class="flex items-center gap-1" title="得分">
+        <span class="text-emerald-400">★</span>
+        <span id="ui-score" class="font-bold text-emerald-300">0</span>
+      </div>
+      <div class="hidden md:flex items-center gap-1 text-xs text-slate-400" title="当前存档状态">
+        <span>🚩</span>
+        <span id="ui-checkpoint" class="text-slate-300">起点</span>
+      </div>
+    </div>
+
+    <!-- 快捷操作按钮组 -->
+    <div class="flex items-center gap-1.5">
+      <select id="level-select" aria-label="选择关卡" class="bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 font-medium px-2.5 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-sky-500">
+        <option value="0">第 1 关：晨曦茉莉庭院</option>
+        <option value="1">第 2 关：暮色浮空回廊</option>
+        <option value="2">第 3 关：星夜月光天台</option>
+      </select>
+      <button id="btn-retry-cp" type="button" class="bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition" title="从存档点重试 (快捷键 C)">
+        读档
+      </button>
+      <button id="btn-restart" type="button" class="bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-700 transition" title="重开本关 (快捷键 R)">
+        重开
+      </button>
+      <button id="btn-mute" type="button" class="bg-slate-800 hover:bg-slate-700 text-xs text-sky-300 px-2.5 py-1.5 rounded-lg border border-slate-700 transition" title="音效开关 (快捷键 M)">
+        🔊 音效
+      </button>
+      <button id="btn-config-toggle" type="button" class="bg-sky-600/20 hover:bg-sky-600/30 text-xs text-sky-300 px-2.5 py-1.5 rounded-lg border border-sky-500/40 transition" title="实时调整物理与角色参数">
+        ⚙️ 参数
+      </button>
+    </div>
+  </header>
+
+  <!-- 游戏主画布与弹窗容器 -->
+  <main class="w-full max-w-5xl mx-auto flex-1 flex flex-col items-center justify-center relative">
+    <div id="game-wrapper" class="w-full relative flex items-center justify-center">
+      <!-- Phaser Canvas 挂载点 -->
+      <div id="phaser-container" class="w-full"></div>
+
+      <!-- 游戏内浮动提示 Toast -->
+      <div id="game-toast" class="pointer-events-none opacity-0 transition-opacity duration-300 absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-sky-500/50 text-sky-200 px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold shadow-lg flex items-center gap-2 z-20">
+        <span id="game-toast-text">存档点已激活！</span>
+      </div>
+
+      <!-- 过关 / 失败 模态框 -->
+      <div id="game-modal" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm rounded-xl flex items-center justify-center z-30 p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 text-center shadow-2xl">
+          <div id="modal-icon" class="text-4xl mb-2">✨</div>
+          <h2 id="modal-title" class="text-xl font-bold text-white mb-1">关卡完成！</h2>
+          <p id="modal-desc" class="text-xs sm:text-sm text-slate-300 mb-4">全部金币与星光已收录。</p>
+          <div class="grid grid-cols-2 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800 mb-4 text-xs pixel-font">
+            <div>
+              <span class="text-slate-400 block">本关金币</span>
+              <span id="modal-coins" class="text-amber-400 font-bold text-sm">0 / 0</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block">总计得分</span>
+              <span id="modal-score" class="text-emerald-400 font-bold text-sm">0</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-center gap-2">
+            <button id="modal-btn-secondary" type="button" class="flex-1 py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition">
+              重玩本关
+            </button>
+            <button id="modal-btn-primary" type="button" class="flex-1 py-2 px-3 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold transition">
+              下一关 →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 实时模块化参数调节面板 (默认折叠) -->
+    <section id="config-drawer" class="hidden w-full mt-2 bg-slate-900/95 border border-slate-800 rounded-xl p-3 text-xs">
+      <div class="flex items-center justify-between mb-2">
+        <span class="font-semibold text-sky-300">🛠️ 模块化参数实时调试器 (修改后立即生效，对应代码中 `GAME_CONFIG`)</span>
+        <button id="btn-reset-config" type="button" class="text-slate-400 hover:text-white underline text-[11px]">恢复默认参数</button>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <label class="flex flex-col gap-1 bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+          <div class="flex justify-between">
+            <span class="text-slate-400">奔跑速度 (`runSpeed`)</span>
+            <span id="val-speed" class="pixel-font text-sky-300">210</span>
+          </div>
+          <input id="inp-speed" type="range" min="120" max="340" step="10" value="210" class="accent-sky-400" />
+        </label>
+        <label class="flex flex-col gap-1 bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+          <div class="flex justify-between">
+            <span class="text-slate-400">一段跳力度 (`jumpForce`)</span>
+            <span id="val-jump" class="pixel-font text-sky-300">390</span>
+          </div>
+          <input id="inp-jump" type="range" min="280" max="520" step="10" value="390" class="accent-sky-400" />
+        </label>
+        <label class="flex flex-col gap-1 bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+          <div class="flex justify-between">
+            <span class="text-slate-400">二段跳力度 (`doubleJump`)</span>
+            <span id="val-djump" class="pixel-font text-sky-300">350</span>
+          </div>
+          <input id="inp-djump" type="range" min="240" max="480" step="10" value="350" class="accent-sky-400" />
+        </label>
+        <label class="flex flex-col gap-1 bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+          <div class="flex justify-between">
+            <span class="text-slate-400">重力加速度 (`gravityY`)</span>
+            <span id="val-gravity" class="pixel-font text-sky-300">920</span>
+          </div>
+          <input id="inp-gravity" type="range" min="500" max="1400" step="20" value="920" class="accent-sky-400" />
+        </label>
+      </div>
+    </section>
+
+    <!-- 触屏/鼠标虚拟按键 + 键盘操作说明 -->
+    <div class="w-full mt-2 flex flex-wrap items-center justify-between gap-2 bg-slate-900/75 border border-slate-800/80 px-3 py-2 rounded-xl">
+      <div class="flex items-center gap-2">
+        <button id="touch-left" type="button" class="touch-btn w-12 h-10 sm:w-14 sm:h-11 rounded-lg bg-slate-800 border border-slate-700 text-base font-bold text-slate-200 flex items-center justify-center">
+          ◀
+        </button>
+        <button id="touch-right" type="button" class="touch-btn w-12 h-10 sm:w-14 sm:h-11 rounded-lg bg-slate-800 border border-slate-700 text-base font-bold text-slate-200 flex items-center justify-center">
+          ▶
+        </button>
+      </div>
+
+      <div class="text-[11px] sm:text-xs text-slate-400 text-center flex-1">
+        <span class="hidden sm:inline">键盘：<kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">A</kbd>/<kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">D</kbd> 或 <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">◀</kbd>/<kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">▶</kbd> 移动 · <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">W</kbd>/<kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">Space</kbd>/<kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-slate-200">▲</kbd> 跳跃 & 二段跳 · 踩敌人头顶消灭怪物</span>
+        <span class="sm:hidden">支持触屏操控 · 连按两次跳跃触发茉莉二段跳</span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="touch-jump" type="button" class="touch-btn px-5 h-10 sm:h-11 rounded-lg bg-sky-500/20 border border-sky-500/40 text-xs sm:text-sm font-bold text-sky-300 flex items-center justify-center gap-1">
+          ▲ 跳跃 / 二段跳
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    /**
+     * ============================================================================
+     * 模块 1：GAME_CONFIG (全局游戏参数配置表)
+     * 修改此处即可轻松调整主角手感、物理重力、生命值与配色
+     * ============================================================================
+     */
+    const DEFAULT_CONFIG = {
+      width: 800,
+      height: 450,
+      gravityY: 920,
+      player: {
+        runSpeed: 210,
+        jumpForce: 390,
+        doubleJumpForce: 350,
+        stompBounce: 310,
+        maxJumps: 2,
+        coyoteTimeMs: 110,
+        invincibleMs: 1100,
+        maxHp: 3
+      },
+      scoring: {
+        coin: 100,
+        enemyStomp: 250,
+        checkpoint: 150,
+        levelClearBonus: 500
+      }
+    };
+
+    const GAME_CONFIG = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+
+    /**
+     * ============================================================================
+     * 模块 2：SoundFX (纯 Web Audio API 合成器音效模块，零外部音频依赖)
+     * ============================================================================
+     */
+    class SoundFX {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            this.ctx = new AudioCtx();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      toggleMute() {
+        this.muted = !this.muted;
+        return this.muted;
+      }
+
+      playTone({ freq = 440, endFreq = null, duration = 0.12, type = 'square', gain = 0.12, delay = 0 }) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime + delay;
+        const osc = this.ctx.createOscillator();
+        const gainNode = this.ctx.createGain();
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        if (endFreq !== null) {
+          osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), now + duration);
+        }
+
+        gainNode.gain.setValueAtTime(gain, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        osc.connect(gainNode);
+        gainNode.connect(this.ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + duration);
+      }
+
+      jump() {
+        this.playTone({ freq: 240, endFreq: 520, duration: 0.13, type: 'square', gain: 0.1 });
+      }
+
+      doubleJump() {
+        // 茉莉花二段跳清脆双音
+        this.playTone({ freq: 420, endFreq: 680, duration: 0.1, type: 'triangle', gain: 0.12, delay: 0 });
+        this.playTone({ freq: 680, endFreq: 960, duration: 0.12, type: 'sine', gain: 0.12, delay: 0.06 });
+      }
+
+      coin() {
+        this.playTone({ freq: 987.77, duration: 0.07, type: 'square', gain: 0.09, delay: 0 });
+        this.playTone({ freq: 1318.51, duration: 0.18, type: 'square', gain: 0.1, delay: 0.07 });
+      }
+
+      stomp() {
+        this.playTone({ freq: 320, endFreq: 110, duration: 0.11, type: 'sawtooth', gain: 0.12, delay: 0 });
+        this.playTone({ freq: 440, endFreq: 660, duration: 0.1, type: 'square', gain: 0.09, delay: 0.05 });
+      }
+
+      checkpoint() {
+        const notes = [523.25, 659.25, 783.99, 1046.5];
+        notes.forEach((f, idx) => {
+          this.playTone({ freq: f, duration: 0.12, type: 'triangle', gain: 0.11, delay: idx * 0.06 });
+        });
+      }
+
+      hurt() {
+        this.playTone({ freq: 190, endFreq: 65, duration: 0.25, type: 'sawtooth', gain: 0.14, delay: 0 });
+        this.playTone({ freq: 140, endFreq: 50, duration: 0.25, type: 'square', gain: 0.1, delay: 0.05 });
+      }
+
+      levelClear() {
+        const melody = [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5];
+        const durations = [0.1, 0.1, 0.1, 0.18, 0.1, 0.3];
+        let offset = 0;
+        melody.forEach((f, idx) => {
+          this.playTone({ freq: f, duration: durations[idx], type: 'square', gain: 0.11, delay: offset });
+          offset += durations[idx] * 0.9;
+        });
+      }
+    }
+
+    const sfx = new SoundFX();
+
+    /**
+     * ============================================================================
+     * 模块 3：PixelSpriteFactory (纯代码像素矩阵纹理生成器)
+     * 主角严格以视频人物建模：
+     * - 深棕栗色偏分内扣短发波波头 (一侧撩耳后，一侧自然垂落至下颌)
+     * - 柔和白皙肤色 + 灵动大眼 + 淡粉腮红 + 上扬微笑嘴角
+     * - 白色立领扣子衬衫 (带立领轮廓与前襟三颗珍珠白纽扣) + 深灰百褶短裙 + 短靴
+     * ============================================================================
+     */
+    class PixelSpriteFactory {
+      static PALETTE = {
+        '.': null,
+        'H': '#2d1a10', // 深栗棕发色外廓
+        'h': '#4a2c1d', // 栗棕短发主色
+        'l': '#6e452e', // 发丝高光
+        'S': '#ffe5d9', // 白皙肤色
+        's': '#f5cbb8', // 颈部/面部柔和阴影
+        'E': '#1e130c', // 灵动深棕眼瞳
+        'W': '#ffffff', // 眼神高光 / 纯白立领衬衫高光
+        'B': '#ff9ebb', // 淡妆蜜桃粉腮红
+        'M': '#e26d85', // 上扬微笑唇色
+        'C': '#f8fafc', // 白色立领衬衫主色
+        'c': '#e2e8f0', // 衬衫立领与袖口阴影
+        'b': '#94a3b8', // 衬衫门襟精致纽扣
+        'K': '#334155', // 深灰蓝下装裙裤
+        'k': '#1e293b', // 短靴深色
+        'J': '#fef08a'  // 耳畔茉莉花发饰点缀
+      };
+
+      // 16x24 角色基础像素矩阵构建器（支持腿部/手臂/发丝动态帧偏移）
+      static buildCharacterMatrix(pose = 'idle0') {
+        const breathOffset = pose === 'idle1' ? 1 : 0;
+        const headRows = [
+          '....HHHHHHHH....',
+          '...HHhhhhhhhH...',
+          '..HhhllhhhhhhH..',
+          '..HhhhhhhhhhhH..',
+          '.HhhHSSSSSShhhH.',
+          '.HhJSSSSSSSShhH.',
+          '.HhSSEWSSWEShhh.',
+          '.HhSSSSSSSSShhh.',
+          '.HhSBSSSSSSBhhh.',
+          '..HSSSSMMSSShhH.',
+          '..HHSSSSSSSShH..',
+          '...HHsSSSSsHH...'
+        ];
+
+        // 白色立领扣子衬衫躯干（带立领 cWWc 和纵向三颗纽扣 b）
+        let torsoRows = [
+          '....ccWWWWcc....', // 立领 (Mandarin stand collar)
+          '...cCCCCCCCCc...',
+          '..cCCCCbCCCCCc..', // 第1颗扣子
+          '..SCCCCCbCCCCCS.', // 第2颗扣子 + 白皙手部
+          '..SCCCCbCCCCCS..', // 第3颗扣子
+          '...CCCCCCCCCC...'
+        ];
+
+        if (pose === 'jump' || pose === 'djump') {
+          // 跳跃时双手微抬，发尾轻扬
+          torsoRows = [
+            '....ccWWWWcc....',
+            '..ScCCCCCCCCcS..',
+            '.SSCCCCbCCCCCSS.',
+            '...CCCCCbCCCCC..',
+            '...CCCCbCCCCCC..',
+            '...CCCCCCCCCC...'
+          ];
+        } else if (pose === 'run1') {
+          torsoRows = [
+            '....ccWWWWcc....',
+            '...cCCCCCCCCc...',
+            '..SCCCCbCCCCCc..',
+            '..SCCCCCbCCCCS..',
+            '...CCCCbCCCCCS..',
+            '...CCCCCCCCCC...'
+          ];
+        } else if (pose === 'run3') {
+          torsoRows = [
+            '....ccWWWWcc....',
+            '...cCCCCCCCCc...',
+            '..cCCCCbCCCCCS..',
+            '..SCCCCbCCCCCS..',
+            '..SCCCCbCCCCCC..',
+            '...CCCCCCCCCC...'
+          ];
+        }
+
+        let legRows = [
+          '...KKKKKKKKKK...',
+          '...KKKK..KKKK...',
+          '....SS....SS....',
+          '....SS....SS....',
+          '...kkk....kkk...',
+          '...kkk....kkk...'
+        ];
+
+        if (pose === 'run0' || pose === 'run2') {
+          legRows = [
+            '...KKKKKKKKKK...',
+            '...KKKK..KKKK...',
+            '....SS....SS....',
+            '...SS......SS...',
+            '..kkk......kkk..',
+            '................'
+          ];
+        } else if (pose === 'run1') {
+          legRows = [
+            '...KKKKKKKKKK...',
+            '..KKKK....KKKK..',
+            '..SS........SS..',
+            '.kkk.........kkk',
+            '................',
+            '................'
+          ];
+        } else if (pose === 'run3') {
+          legRows = [
+            '...KKKKKKKKKK...',
+            '....KKKK.KKKK...',
+            '.....SS...SS....',
+            '....kkk....kkk..',
+            '................',
+            '................'
+          ];
+        } else if (pose === 'jump') {
+          legRows = [
+            '...KKKKKKKKKK...',
+            '..KKKK....KKKK..',
+            '..SS........SS..',
+            '..kkk......kkk..',
+            '................',
+            '................'
+          ];
+        } else if (pose === 'djump') {
+          legRows = [
+            '...KKKKKKKKKK...',
+            '...KKKK..KKKK...',
+            '..SS........SS..',
+            '.kkk........kkk.',
+            '................',
+            '................'
+          ];
+        }
+
+        const full = [];
+        if (breathOffset === 1) {
+          full.push('................');
+          full.push(...headRows);
+          full.push(...torsoRows.slice(0, 5));
+          full.push(...legRows);
+        } else {
+          full.push(...headRows);
+          full.push(...torsoRows);
+          full.push(...legRows);
+        }
+        return full.slice(0, 24);
+      }
+
+      static drawMatrixToCanvas(matrix, palette, scale = 2) {
+        const h = matrix.length;
+        const w = matrix[0].length;
+        const canvas = document.createElement('canvas');
+        canvas.width = w * scale;
+        canvas.height = h * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+
+        for (let y = 0; y < h; y++) {
+          const row = matrix[y];
+          for (let x = 0; x < w; x++) {
+            const ch = row[x];
+            const color = palette[ch];
+            if (color) {
+              ctx.fillStyle = color;
+              ctx.fillRect(x * scale, y * scale, scale, scale);
+            }
+          }
+        }
+        return canvas;
+      }
+
+      static registerAllTextures(scene) {
+        // 1. 注册主角各姿态帧纹理 (32x48 像素)
+        const poses = ['idle0', 'idle1', 'run0', 'run1', 'run2', 'run3', 'jump', 'djump'];
+        poses.forEach(pose => {
+          const key = `girl_${pose}`;
+          if (!scene.textures.exists(key)) {
+            const mat = this.buildCharacterMatrix(pose);
+            const canvas = this.drawMatrixToCanvas(mat, this.PALETTE, 2);
+            scene.textures.addCanvas(key, canvas);
+          }
+        });
+
+        // 同步绘制顶部导航栏头像预览
+        const avatarCanvas = document.getElementById('avatar-preview');
+        if (avatarCanvas) {
+          const actx = avatarCanvas.getContext('2d');
+          actx.imageSmoothingEnabled = false;
+          actx.clearRect(0, 0, 36, 36);
+          const headCanvas = this.drawMatrixToCanvas(this.buildCharacterMatrix('idle0').slice(0, 17), this.PALETTE, 2);
+          actx.drawImage(headCanvas, 2, 2);
+        }
+
+        // 2. 地面与多层平台砖块纹理 (32x32)
+        if (!scene.textures.exists('tile_ground')) {
+          const g = scene.make.graphics({ x: 0, y: 0, add: false });
+          g.fillStyle(0x1e293b, 1);
+          g.fillRect(0, 0, 32, 32);
+          // 顶部青翠草坪与茉莉花点缀
+          g.fillStyle(0x10b981, 1);
+          g.fillRect(0, 0, 32, 6);
+          g.fillStyle(0x34d399, 1);
+          g.fillRect(2, 0, 8, 3);
+          g.fillRect(18, 0, 10, 3);
+          // 像素砖缝
+          g.fillStyle(0x334155, 1);
+          g.fillRect(2, 8, 12, 10);
+          g.fillRect(16, 8, 14, 10);
+          g.fillRect(0, 20, 8, 10);
+          g.fillRect(10, 20, 14, 10);
+          g.fillRect(26, 20, 6, 10);
+          g.generateTexture('tile_ground', 32, 32);
+          g.destroy();
+        }
+
+        // 3. 移动平台纹理 (96x18)
+        if (!scene.textures.exists('tile_moving')) {
+          const g = scene.make.graphics({ x: 0, y: 0, add: false });
+          g.fillStyle(0x0284c7, 1);
+          g.fillRect(0, 0, 96, 18);
+          g.fillStyle(0x38bdf8, 1);
+          g.fillRect(2, 2, 92, 5);
+          g.fillStyle(0x0f172a, 1);
+          for (let i = 10; i < 90; i += 16) {
+            g.fillRect(i, 9, 6, 5);
+          }
+          g.generateTexture('tile_moving', 96, 18);
+          g.destroy();
+        }
+
+        // 4. 尖刺陷阱纹理 (32x16)
+        if (!scene.textures.exists('trap_spike')) {
+          const g = scene.make.graphics({ x: 0, y: 0, add: false });
+          for (let i = 0; i < 4; i++) {
+            const bx = i * 8;
+            g.fillStyle(0x94a3b8, 1);
+            g.fillTriangle(bx, 16, bx + 4, 2, bx + 8, 16);
+            g.fillStyle(0xf43f5e, 1);
+            g.fillTriangle(bx + 2, 7, bx + 4, 2, bx + 6, 7);
+          }
+          g.generateTexture('trap_spike', 32, 16);
+          g.destroy();
+        }
+
+        // 5. 茉莉金币纹理 (18x18)
+        if (!scene.textures.exists('item_coin')) {
+          const g = scene.make.graphics({ x: 0, y: 0, add: false });
+          g.fillStyle(0xf59e0b, 1);
+          g.fillCircle(9, 9, 8);
+          g.fillStyle(0xfef08a, 1);
+          g.fillCircle(9, 9, 6);
+          g.fillStyle(0xd97706, 1);
+          g.fillRect(8, 5, 2, 8);
+          g.generateTexture('item_coin', 18, 18);
+          g.destroy();
+        }
+
+        // 6. 巡逻小怪纹理 (28x24 像素暗影史莱姆怪)
+        if (!scene.textures.exists('enemy_slime_0')) {
+          const drawEnemy = (key, squish) => {
+            const g = scene.make.graphics({ x: 0, y: 0, add: false });
+            const topY = squish ? 6 : 2;
+            const h = squish ? 18 : 22;
+            g.fillStyle(0x9333ea, 1);
+            g.fillRoundedRect(2, topY, 24, h, 6);
+            g.fillStyle(0xc084fc, 1);
+            g.fillRect(6, topY + 2, 12, 3);
+            // 愤怒像素眼
+            g.fillStyle(0xfef08a, 1);
+            g.fillRect(6, topY + 8, 5, 5);
+            g.fillRect(17, topY + 8, 5, 5);
+            g.fillStyle(0xef4444, 1);
+            g.fillRect(8, topY + 10, 3, 3);
+            g.fillRect(17, topY + 10, 3, 3);
+            g.generateTexture(key, 28, 24);
+            g.destroy();
+          };
+          drawEnemy('enemy_slime_0', false);
+          drawEnemy('enemy_slime_1', true);
+        }
+
+        // 7. 存档点旗杆纹理 (未激活 & 已激活, 28x44)
+        if (!scene.textures.exists('cp_inactive')) {
+          const drawCP = (key, active) => {
+            const g = scene.make.graphics({ x: 0, y: 0, add: false });
+            // 底座与旗杆
+            g.fillStyle(0x64748b, 1);
+            g.fillRect(4, 38, 16, 6);
+            g.fillStyle(0xcbd5e1, 1);
+            g.fillRect(10, 6, 4, 32);
+            // 旗面
+            g.fillStyle(active ? 0x10b981 : 0x475569, 1);
+            g.fillTriangle(14, 8, 28, 15, 14, 22);
+            if (active) {
+              g.fillStyle(0xa7f3d0, 1);
+              g.fillCircle(12, 5, 4);
+            }
+            g.generateTexture(key, 28, 44);
+            g.destroy();
+          };
+          drawCP('cp_inactive', false);
+          drawCP('cp_active', true);
+        }
+
+        // 8. 终点传送门纹理 (36x52)
+        if (!scene.textures.exists('goal_portal')) {
+          const g = scene.make.graphics({ x: 0, y: 0, add: false });
+          g.fillStyle(0x38bdf8, 0.35);
+          g.fillRoundedRect(2, 2, 32, 48, 14);
+          g.fillStyle(0x7dd3fc, 0.7);
+          g.fillRoundedRect(7, 8, 22, 38, 10);
+          g.fillStyle(0xffffff, 0.95);
+          g.fillRoundedRect(12, 14, 12, 26, 6);
+          g.generateTexture('goal_portal', 36, 52);
+          g.destroy();
+        }
+
+        // 9. 通用像素粒子纹理 (6x6)
+        if (!scene.textures.exists('px_particle')) {
+          const g = scene.make.graphics({ x: 0, y: 0, add: false });
+          g.fillStyle(0xffffff, 1);
+          g.fillRect(0, 0, 6, 6);
+          g.generateTexture('px_particle', 6, 6);
+          g.destroy();
+        }
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 模块 4：LEVEL_CONFIGS (声明式多关卡数据配置)
+     * 新增关卡只需在此数组中 push 一个新对象即可！
+     * 坐标说明：世界高度固定为 450，地面顶部默认在 y=418
+     * ============================================================================
+     */
+    const LEVEL_CONFIGS = [
+      {
+        id: 1,
+        name: '第 1 关：晨曦茉莉庭院',
+        worldWidth: 2200,
+        skyColors: [0x0f172a, 0x1e293b],
+        spawn: { x: 70, y: 360 },
+        // 静态地面与多层平台: [x中心, y中心, 宽度(32的倍数)]
+        platforms: [
+          [320, 434, 640],
+          [880, 434, 320],
+          [1440, 434, 480],
+          [1980, 434, 440],
+          // 多层高低平台
+          [260, 340, 128],
+          [450, 265, 128],
+          [660, 310, 96],
+          [920, 320, 128],
+          [1120, 240, 128],
+          [1350, 320, 128],
+          [1560, 235, 160],
+          [1780, 175, 128]
+        ],
+        // 移动平台: { x, y, minX, maxX, minY, maxY, speed }
+        movingPlatforms: [
+          { x: 670, y: 380, minX: 640, maxX: 730, minY: 380, maxY: 380, speed: 65 },
+          { x: 1120, y: 350, minX: 1060, maxX: 1180, minY: 350, maxY: 350, speed: 80 },
+          { x: 1730, y: 310, minX: 1730, maxX: 1730, minY: 220, maxY: 360, speed: 70 }
+        ],
+        // 尖刺陷阱: [x中心, y底部对齐点]
+        spikes: [
+          [520, 418],
+          [840, 418],
+          [1380, 418],
+          [1560, 219]
+        ],
+        // 金币位置: [x, y]
+        coins: [
+          [230, 300], [265, 300], [300, 300],
+          [420, 225], [455, 225], [490, 225],
+          [660, 270],
+          [900, 280], [940, 280],
+          [1100, 200], [1140, 200],
+          [1530, 195], [1565, 195], [1600, 195],
+          [1760, 135], [1800, 135]
+        ],
+        // 巡逻敌人: { x, y, minX, maxX, speed }
+        enemies: [
+          { x: 360, y: 390, minX: 200, maxX: 460, speed: 65 },
+          { x: 920, y: 280, minX: 865, maxX: 970, speed: 55 },
+          { x: 1480, y: 390, minX: 1410, maxX: 1640, speed: 75 },
+          { x: 1920, y: 390, minX: 1820, maxX: 2040, speed: 80 }
+        ],
+        // 存档点: { x, y, label }
+        checkpoints: [
+          { x: 800, y: 396, label: '庭院中段' },
+          { x: 1300, y: 396, label: '浮桥入口' }
+        ],
+        goal: { x: 2110, y: 392 }
+      },
+      {
+        id: 2,
+        name: '第 2 关：暮色浮空回廊',
+        worldWidth: 2400,
+        skyColors: [0x1e1b4b, 0x311042],
+        spawn: { x: 70, y: 360 },
+        platforms: [
+          [220, 434, 440],
+          [820, 434, 288],
+          [1480, 434, 352],
+          [2180, 434, 440],
+          // 多层阶梯
+          [320, 330, 128],
+          [520, 250, 128],
+          [820, 310, 128],
+          [1020, 210, 128],
+          [1480, 290, 160],
+          [1720, 200, 128],
+          [1940, 280, 128]
+        ],
+        movingPlatforms: [
+          { x: 560, y: 380, minX: 470, maxX: 650, minY: 380, maxY: 380, speed: 95 },
+          { x: 1180, y: 340, minX: 1030, maxX: 1270, minY: 340, maxY: 340, speed: 105 },
+          { x: 1750, y: 360, minX: 1680, maxX: 1920, minY: 360, maxY: 360, speed: 95 },
+          { x: 1260, y: 240, minX: 1260, maxX: 1260, minY: 160, maxY: 320, speed: 85 }
+        ],
+        spikes: [
+          [360, 418],
+          [740, 418],
+          [900, 418],
+          [1420, 418],
+          [1480, 274],
+          [2060, 418]
+        ],
+        coins: [
+          [300, 290], [340, 290],
+          [500, 210], [540, 210],
+          [800, 270], [840, 270],
+          [1000, 170], [1040, 170],
+          [1260, 130], [1260, 170],
+          [1450, 240], [1510, 240],
+          [1700, 160], [1740, 160],
+          [1920, 240], [1960, 240]
+        ],
+        enemies: [
+          { x: 260, y: 390, minX: 140, maxX: 330, speed: 75 },
+          { x: 820, y: 270, minX: 765, maxX: 875, speed: 65 },
+          { x: 1520, y: 390, minX: 1450, maxX: 1620, speed: 85 },
+          { x: 1940, y: 240, minX: 1885, maxX: 1995, speed: 70 },
+          { x: 2180, y: 390, minX: 2090, maxX: 2280, speed: 95 }
+        ],
+        checkpoints: [
+          { x: 700, y: 396, label: '暮色石台' },
+          { x: 1350, y: 396, label: '双层浮岛' }
+        ],
+        goal: { x: 2310, y: 392 }
+      },
+      {
+        id: 3,
+        name: '第 3 关：星夜月光天台',
+        worldWidth: 2600,
+        skyColors: [0x090d16, 0x172554],
+        spawn: { x: 70, y: 360 },
+        platforms: [
+          [200, 434, 400],
+          [940, 434, 288],
+          [1660, 434, 288],
+          [2380, 434, 440],
+          // 高空连续跳台
+          [340, 320, 96],
+          [520, 230, 96],
+          [720, 160, 128],
+          [940, 290, 128],
+          [1340, 220, 128],
+          [1660, 290, 128],
+          [1900, 200, 128],
+          [2120, 140, 128]
+        ],
+        movingPlatforms: [
+          { x: 560, y: 370, minX: 440, maxX: 760, minY: 370, maxY: 370, speed: 115 },
+          { x: 1160, y: 350, minX: 1100, maxX: 1460, minY: 350, maxY: 350, speed: 120 },
+          { x: 1920, y: 350, minX: 1820, maxX: 2120, minY: 350, maxY: 350, speed: 125 },
+          { x: 1500, y: 270, minX: 1500, maxX: 1500, minY: 160, maxY: 360, speed: 95 }
+        ],
+        spikes: [
+          [320, 418],
+          [840, 418],
+          [1040, 418],
+          [1560, 418],
+          [1760, 418],
+          [2240, 418],
+          [940, 274],
+          [1660, 274]
+        ],
+        coins: [
+          [340, 280],
+          [520, 190],
+          [700, 120], [740, 120],
+          [920, 240], [960, 240],
+          [1320, 180], [1360, 180],
+          [1500, 130],
+          [1640, 240], [1680, 240],
+          [1880, 160], [1920, 160],
+          [2100, 100], [2140, 100],
+          [2360, 380], [2400, 380]
+        ],
+        enemies: [
+          { x: 220, y: 390, minX: 130, maxX: 290, speed: 85 },
+          { x: 720, y: 120, minX: 665, maxX: 775, speed: 75 },
+          { x: 940, y: 390, minX: 870, maxX: 1010, speed: 95 },
+          { x: 1340, y: 180, minX: 1285, maxX: 1395, speed: 80 },
+          { x: 1660, y: 390, minX: 1590, maxX: 1730, speed: 100 },
+          { x: 2380, y: 390, minX: 2280, maxX: 2460, speed: 110 }
+        ],
+        checkpoints: [
+          { x: 890, y: 396, label: '星夜拱桥' },
+          { x: 1610, y: 396, label: '月光长廊' }
+        ],
+        goal: { x: 2510, y: 392 }
+      }
+    ];
+
+    /**
+     * ============================================================================
+     * 模块 5：GameScene (Phaser 3 核心横版闯关场景)
+     * ============================================================================
+     */
+    class GameScene extends Phaser.Scene {
+      constructor() {
+        super('GameScene');
+        this.currentLevelIndex = 0;
+        this.totalScore = 0;
+        this.virtualInput = { left: false, right: false, jumpJustPressed: false };
+      }
+
+      init(data) {
+        if (typeof data.levelIndex === 'number') {
+          this.currentLevelIndex = data.levelIndex;
+        }
+        if (typeof data.totalScore === 'number') {
+          this.totalScore = data.totalScore;
+        }
+      }
+
+      create() {
+        // 生成全部纯代码像素纹理
+        PixelSpriteFactory.registerAllTextures(this);
+        this.createAnimations();
+
+        const level = LEVEL_CONFIGS[this.currentLevelIndex];
+        this.levelData = level;
+
+        // 状态变量初始化
+        this.hp = GAME_CONFIG.player.maxHp;
+        this.coinsCollected = 0;
+        this.totalCoinsInLevel = level.coins.length;
+        this.checkpointPos = { x: level.spawn.x, y: level.spawn.y };
+        this.checkpointLabel = '起点';
+        this.jumpsUsed = 0;
+        this.lastGroundedTime = 0;
+        this.invincibleUntil = 0;
+        this.isLevelEnded = false;
+        this.ridingPlatform = null;
+
+        // 设置物理世界与相机边界
+        this.physics.world.gravity.y = GAME_CONFIG.gravityY;
+        this.physics.world.setBounds(0, 0, level.worldWidth, GAME_CONFIG.height + 120);
+        this.cameras.main.setBounds(0, 0, level.worldWidth, GAME_CONFIG.height);
+
+        // 1. 创建多层视差滚动背景
+        this.createParallaxBackground(level);
+
+        // 2. 创建粒子发射器
+        this.createParticleSystems();
+
+        // 3. 创建静态多层平台
+        this.platforms = this.physics.add.staticGroup();
+        level.platforms.forEach(([cx, cy, w]) => {
+          const count = Math.max(1, Math.round(w / 32));
+          const startX = cx - (count * 32) / 2 + 16;
+          for (let i = 0; i < count; i++) {
+            this.platforms.create(startX + i * 32, cy, 'tile_ground');
+          }
+        });
+
+        // 4. 创建移动平台
+        this.movingPlatforms = this.physics.add.group({
+          allowGravity: false,
+          immovable: true
+        });
+        level.movingPlatforms.forEach(mp => {
+          const plat = this.movingPlatforms.create(mp.x, mp.y, 'tile_moving');
+          plat.setData('config', mp);
+          plat.setData('dirX', 1);
+          plat.setData('dirY', 1);
+          plat.setData('prevX', mp.x);
+          plat.setData('prevY', mp.y);
+        });
+
+        // 5. 创建尖刺陷阱
+        this.spikes = this.physics.add.staticGroup();
+        level.spikes.forEach(([sx, sy]) => {
+          const spike = this.spikes.create(sx, sy - 8, 'trap_spike');
+          spike.body.setSize(26, 12);
+          spike.body.setOffset(3, 4);
+        });
+
+        // 6. 创建存档点
+        this.checkpoints = this.physics.add.staticGroup();
+        level.checkpoints.forEach(cp => {
+          const flag = this.checkpoints.create(cp.x, cp.y - 22, 'cp_inactive');
+          flag.setData('label', cp.label);
+          flag.setData('activated', false);
+          flag.setData('spawnX', cp.x);
+          flag.setData('spawnY', cp.y - 34);
+        });
+
+        // 7. 创建终点传送门
+        this.goalPortal = this.physics.add.staticSprite(level.goal.x, level.goal.y - 26, 'goal_portal');
+        this.tweens.add({
+          targets: this.goalPortal,
+          scaleX: 1.08,
+          scaleY: 1.05,
+          alpha: 0.85,
+          yoyo: true,
+          repeat: -1,
+          duration: 750
+        });
+
+        // 8. 创建金币
+        this.coins = this.physics.add.group({ allowGravity: false });
+        level.coins.forEach(([cx, cy], idx) => {
+          const coin = this.coins.create(cx, cy, 'item_coin');
+          this.tweens.add({
+            targets: coin,
+            y: cy - 5,
+            yoyo: true,
+            repeat: -1,
+            duration: 600 + (idx % 4) * 80,
+            ease: 'Sine.easeInOut'
+          });
+        });
+
+        // 9. 创建巡逻怪物
+        this.enemies = this.physics.add.group();
+        level.enemies.forEach(ec => {
+          const enemy = this.enemies.create(ec.x, ec.y, 'enemy_slime_0');
+          enemy.setCollideWorldBounds(true);
+          enemy.body.setSize(24, 20);
+          enemy.body.setOffset(2, 4);
+          enemy.setData('minX', ec.minX);
+          enemy.setData('maxX', ec.maxX);
+          enemy.setData('speed', ec.speed);
+          enemy.setVelocityX(ec.speed);
+          enemy.play('enemy_walk');
+        });
+
+        // 10. 创建主角（视频中的短发白立领衬衫女孩）
+        this.player = this.physics.add.sprite(this.checkpointPos.x, this.checkpointPos.y, 'girl_idle0');
+        this.player.body.setSize(18, 42);
+        this.player.body.setOffset(7, 6);
+        this.player.setDepth(10);
+        this.player.play('girl_idle');
+
+        // 相机平滑跟随主角
+        this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+
+        // 11. 注册碰撞与重叠检测
+        this.physics.add.collider(this.player, this.platforms);
+        this.physics.add.collider(this.enemies, this.platforms);
+        this.physics.add.collider(this.enemies, this.movingPlatforms);
+
+        this.physics.add.collider(
+          this.player,
+          this.movingPlatforms,
+          (player, plat) => {
+            if (player.body.touching.down && plat.body.touching.up) {
+              this.ridingPlatform = plat;
+            }
+          }
+        );
+
+        this.physics.add.overlap(this.player, this.coins, this.handleCollectCoin, null, this);
+        this.physics.add.overlap(this.player, this.checkpoints, this.handleActivateCheckpoint, null, this);
+        this.physics.add.overlap(this.player, this.spikes, this.handleHitSpike, null, this);
+        this.physics.add.overlap(this.player, this.enemies, this.handlePlayerEnemyOverlap, null, this);
+        this.physics.add.overlap(this.player, this.goalPortal, this.handleReachGoal, null, this);
+
+        // 12. 键盘输入绑定
+        this.cursors = this.input.keyboard.createCursorKeys();
+        this.keys = this.input.keyboard.addKeys({
+          left: Phaser.Input.Keyboard.KeyCodes.A,
+          right: Phaser.Input.Keyboard.KeyCodes.D,
+          up: Phaser.Input.Keyboard.KeyCodes.W,
+          space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+          retryCP: Phaser.Input.Keyboard.KeyCodes.C,
+          restart: Phaser.Input.Keyboard.KeyCodes.R
+        });
+
+        // 同步顶部 HUD
+        this.syncHUD();
+      }
+
+      createAnimations() {
+        if (this.anims.exists('girl_idle')) return;
+
+        this.anims.create({
+          key: 'girl_idle',
+          frames: [{ key: 'girl_idle0' }, { key: 'girl_idle1' }],
+          frameRate: 3,
+          repeat: -1
+        });
+
+        this.anims.create({
+          key: 'girl_run',
+          frames: [
+            { key: 'girl_run0' },
+            { key: 'girl_run1' },
+            { key: 'girl_run2' },
+            { key: 'girl_run3' }
+          ],
+          frameRate: 10,
+          repeat: -1
+        });
+
+        this.anims.create({
+          key: 'enemy_walk',
+          frames: [{ key: 'enemy_slime_0' }, { key: 'enemy_slime_1' }],
+          frameRate: 5,
+          repeat: -1
+        });
+      }
+
+      createParallaxBackground(level) {
+        // 背景天空渐变层 (固定在屏幕)
+        const skyGfx = this.add.graphics();
+        skyGfx.fillGradientStyle(
+          level.skyColors[0],
+          level.skyColors[0],
+          level.skyColors[1],
+          level.skyColors[1],
+          1
+        );
+        skyGfx.fillRect(0, 0, GAME_CONFIG.width, GAME_CONFIG.height);
+        skyGfx.setScrollFactor(0);
+        skyGfx.setDepth(-30);
+
+        // 皎洁白月光 & 星辰点缀 (极慢视差 0.05)
+        const moonGfx = this.add.graphics();
+        moonGfx.fillStyle(0xfef9c3, 0.2);
+        moonGfx.fillCircle(650, 82, 42);
+        moonGfx.fillStyle(0xfef08a, 0.9);
+        moonGfx.fillCircle(650, 82, 28);
+        for (let i = 0; i < 45; i++) {
+          const sx = (i * 97) % 1200;
+          const sy = (i * 53) % 240;
+          moonGfx.fillStyle(0xffffff, (i % 3 + 1) * 0.25);
+          moonGfx.fillRect(sx, sy, 2, 2);
+        }
+        moonGfx.setScrollFactor(0.05);
+        moonGfx.setDepth(-25);
+
+        // 远景像素群山剪影 (视差系数 0.2)
+        const farGfx = this.add.graphics();
+        farGfx.fillStyle(0x1e293b, 0.75);
+        for (let x = 0; x < level.worldWidth; x += 180) {
+          const peakH = 130 + ((x * 13) % 90);
+          farGfx.fillTriangle(x, 450, x + 110, 450 - peakH, x + 220, 450);
+        }
+        farGfx.setScrollFactor(0.2);
+        farGfx.setDepth(-20);
+
+        // 中景像素楼阁/林木剪影 (视差系数 0.45)
+        const midGfx = this.add.graphics();
+        midGfx.fillStyle(0x334155, 0.65);
+        for (let x = 0; x < level.worldWidth; x += 110) {
+          const h = 65 + ((x * 7) % 75);
+          midGfx.fillRect(x, 420 - h, 64, h + 30);
+          // 像素亮窗点缀
+          midGfx.fillStyle(0xfef08a, 0.45);
+          midGfx.fillRect(x + 14, 435 - h, 8, 10);
+          midGfx.fillRect(x + 36, 435 - h, 8, 10);
+          midGfx.fillStyle(0x334155, 0.65);
+        }
+        midGfx.setScrollFactor(0.45);
+        midGfx.setDepth(-10);
+      }
+
+      createParticleSystems() {
+        // 跳跃/落地尘土与茉莉花瓣粒子
+        this.jumpParticles = this.add.particles(0, 0, 'px_particle', {
+          speed: { min: 30, max: 110 },
+          angle: { min: 200, max: 340 },
+          scale: { start: 1.1, end: 0 },
+          lifespan: 380,
+          tint: [0xffffff, 0xfef08a, 0xe2e8f0],
+          emitting: false
+        });
+
+        // 金币收集粒子
+        this.coinParticles = this.add.particles(0, 0, 'px_particle', {
+          speed: { min: 50, max: 140 },
+          scale: { start: 1.2, end: 0 },
+          lifespan: 420,
+          tint: [0xfef08a, 0xf59e0b, 0xffffff],
+          emitting: false
+        });
+
+        // 踩怪/受伤粒子
+        this.burstParticles = this.add.particles(0, 0, 'px_particle', {
+          speed: { min: 60, max: 170 },
+          scale: { start: 1.4, end: 0 },
+          lifespan: 450,
+          tint: [0xf43f5e, 0xc084fc, 0xfef08a],
+          emitting: false
+        });
+
+        // 存档点翠绿粒子
+        this.cpParticles = this.add.particles(0, 0, 'px_particle', {
+          speed: { min: 40, max: 130 },
+          angle: { min: 220, max: 320 },
+          scale: { start: 1.3, end: 0 },
+          lifespan: 550,
+          tint: [0x10b981, 0x6ee7b7, 0xffffff],
+          emitting: false
+        });
+      }
+
+      update(time, delta) {
+        if (this.isLevelEnded) return;
+
+        // 快捷键监听
+        if (Phaser.Input.Keyboard.JustDown(this.keys.retryCP)) {
+          this.respawnAtCheckpoint();
+          return;
+        }
+        if (Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
+          this.scene.restart({ levelIndex: this.currentLevelIndex, totalScore: this.totalScore });
+          return;
+        }
+
+        // 1. 更新移动平台运动并携带主角
+        this.updateMovingPlatforms(delta);
+
+        // 2. 更新巡逻敌人
+        this.updateEnemies();
+
+        // 3. 处理主角移动与二段跳
+        this.updatePlayerMovement(time);
+
+        // 4. 坠落深渊检测
+        if (this.player.y > GAME_CONFIG.height + 60) {
+          this.damageOrRespawn(true);
+        }
+      }
+
+      updateMovingPlatforms(delta) {
+        const dt = delta / 1000;
+        this.movingPlatforms.children.iterate(plat => {
+          if (!plat) return;
+          const cfg = plat.getData('config');
+          let dirX = plat.getData('dirX');
+          let dirY = plat.getData('dirY');
+          const prevX = plat.x;
+          const prevY = plat.y;
+
+          if (cfg.maxX > cfg.minX) {
+            plat.x += cfg.speed * dirX * dt;
+            if (plat.x >= cfg.maxX) {
+              plat.x = cfg.maxX;
+              dirX = -1;
+            } else if (plat.x <= cfg.minX) {
+              plat.x = cfg.minX;
+              dirX = 1;
+            }
+            plat.setData('dirX', dirX);
+          }
+
+          if (cfg.maxY > cfg.minY) {
+            plat.y += cfg.speed * dirY * dt;
+            if (plat.y >= cfg.maxY) {
+              plat.y = cfg.maxY;
+              dirY = -1;
+            } else if (plat.y <= cfg.minY) {
+              plat.y = cfg.minY;
+              dirY = 1;
+            }
+            plat.setData('dirY', dirY);
+          }
+
+          plat.body.updateFromGameObject();
+
+          // 如果主角正站在该移动平台上，同步位移
+          if (this.ridingPlatform === plat && this.player.body.touching.down) {
+            this.player.x += plat.x - prevX;
+            this.player.y += plat.y - prevY;
+          }
+        });
+        this.ridingPlatform = null;
+      }
+
+      updateEnemies() {
+        this.enemies.children.iterate(enemy => {
+          if (!enemy || !enemy.active) return;
+          const minX = enemy.getData('minX');
+          const maxX = enemy.getData('maxX');
+          const speed = enemy.getData('speed');
+
+          if (enemy.x <= minX) {
+            enemy.setVelocityX(speed);
+            enemy.setFlipX(true);
+          } else if (enemy.x >= maxX) {
+            enemy.setVelocityX(-speed);
+            enemy.setFlipX(false);
+          } else if (enemy.body.blocked.left) {
+            enemy.setVelocityX(speed);
+            enemy.setFlipX(true);
+          } else if (enemy.body.blocked.right) {
+            enemy.setVelocityX(-speed);
+            enemy.setFlipX(false);
+          }
+        });
+      }
+
+      updatePlayerMovement(time) {
+        const onGround = this.player.body.blocked.down || this.player.body.touching.down;
+        if (onGround) {
+          this.lastGroundedTime = time;
+          this.jumpsUsed = 0;
+        }
+
+        const moveLeft = this.cursors.left.isDown || this.keys.left.isDown || this.virtualInput.left;
+        const moveRight = this.cursors.right.isDown || this.keys.right.isDown || this.virtualInput.right;
+
+        if (moveLeft) {
+          this.player.setVelocityX(-GAME_CONFIG.player.runSpeed);
+          this.player.setFlipX(true);
+        } else if (moveRight) {
+          this.player.setVelocityX(GAME_CONFIG.player.runSpeed);
+          this.player.setFlipX(false);
+        } else {
+          this.player.setVelocityX(0);
+        }
+
+        // 跳跃与二段跳触发判定
+        const jumpPressed =
+          Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
+          Phaser.Input.Keyboard.JustDown(this.keys.up) ||
+          Phaser.Input.Keyboard.JustDown(this.keys.space) ||
+          this.virtualInput.jumpJustPressed;
+
+        this.virtualInput.jumpJustPressed = false;
+
+        if (jumpPressed) {
+          const withinCoyote = time - this.lastGroundedTime <= GAME_CONFIG.player.coyoteTimeMs;
+          if (onGround || (this.jumpsUsed === 0 && withinCoyote)) {
+            // 一段跳
+            this.player.setVelocityY(-GAME_CONFIG.player.jumpForce);
+            this.jumpsUsed = 1;
+            this.jumpParticles.emitParticleAt(this.player.x, this.player.y + 20, 8);
+            sfx.jump();
+          } else if (this.jumpsUsed < GAME_CONFIG.player.maxJumps) {
+            // 二段跳（茉莉花瓣旋转粒子）
+            this.player.setVelocityY(-GAME_CONFIG.player.doubleJumpForce);
+            this.jumpsUsed = 2;
+            this.jumpParticles.emitParticleAt(this.player.x, this.player.y + 16, 16);
+            sfx.doubleJump();
+          }
+        }
+
+        // 角色动画状态切换
+        if (!onGround) {
+          this.player.setTexture(this.jumpsUsed >= 2 ? 'girl_djump' : 'girl_jump');
+        } else if (Math.abs(this.player.body.velocity.x) > 10) {
+          this.player.play('girl_run', true);
+        } else {
+          this.player.play('girl_idle', true);
+        }
+
+        // 无敌闪烁效果
+        if (time < this.invincibleUntil) {
+          this.player.setAlpha(Math.sin(time * 0.03) > 0 ? 0.45 : 1);
+        } else {
+          this.player.setAlpha(1);
+        }
+      }
+
+      handleCollectCoin(player, coin) {
+        coin.disableBody(true, true);
+        this.coinsCollected += 1;
+        this.totalScore += GAME_CONFIG.scoring.coin;
+        this.coinParticles.emitParticleAt(coin.x, coin.y, 12);
+        sfx.coin();
+        this.syncHUD();
+      }
+
+      handleActivateCheckpoint(player, flag) {
+        if (flag.getData('activated')) return;
+        flag.setData('activated', true);
+        flag.setTexture('cp_active');
+
+        this.checkpointPos = {
+          x: flag.getData('spawnX'),
+          y: flag.getData('spawnY')
+        };
+        this.checkpointLabel = flag.getData('label');
+        this.totalScore += GAME_CONFIG.scoring.checkpoint;
+
+        this.cpParticles.emitParticleAt(flag.x, flag.y, 18);
+        sfx.checkpoint();
+        this.syncHUD();
+        showToast(`🚩 存档点已激活：${this.checkpointLabel}`);
+      }
+
+      handlePlayerEnemyOverlap(player, enemy) {
+        if (!enemy.active) return;
+
+        // 判定是否为从上方踩怪：主角正在下落，且主角脚底高于怪物中心偏下位置
+        const isStomping =
+          player.body.velocity.y > 0 &&
+          player.body.bottom <= enemy.body.top + 16;
+
+        if (isStomping) {
+          enemy.disableBody(true, true);
+          player.setVelocityY(-GAME_CONFIG.player.stompBounce);
+          this.jumpsUsed = 1; // 踩怪后空中可再接一次二段跳
+          this.totalScore += GAME_CONFIG.scoring.enemyStomp;
+          this.burstParticles.emitParticleAt(enemy.x, enemy.y, 18);
+          sfx.stomp();
+          this.syncHUD();
+        } else {
+          this.damageOrRespawn(false);
+        }
+      }
+
+      handleHitSpike() {
+        this.damageOrRespawn(false);
+      }
+
+      damageOrRespawn(fellIntoAbyss) {
+        const now = this.time.now;
+        if (!fellIntoAbyss && now < this.invincibleUntil) return;
+
+        this.hp = Math.max(0, this.hp - 1);
+        sfx.hurt();
+        this.cameras.main.shake(180, 0.012);
+        this.burstParticles.emitParticleAt(this.player.x, this.player.y, 20);
+        this.syncHUD();
+
+        if (this.hp <= 0) {
+          this.isLevelEnded = true;
+          this.player.setVelocity(0, 0);
+          this.player.setTint(0xf43f5e);
+          showGameModal({
+            type: 'fail',
+            coins: `${this.coinsCollected} / ${this.totalCoinsInLevel}`,
+            score: this.totalScore
+          });
+        } else {
+          // 立即回到最近激活的存档点并赋予短暂无敌
+          this.respawnAtCheckpoint();
+        }
+      }
+
+      respawnAtCheckpoint() {
+        this.isLevelEnded = false;
+        this.player.clearTint();
+        this.player.setPosition(this.checkpointPos.x, this.checkpointPos.y);
+        this.player.setVelocity(0, 0);
+        this.jumpsUsed = 0;
+        this.invincibleUntil = this.time.now + GAME_CONFIG.player.invincibleMs;
+        this.cpParticles.emitParticleAt(this.checkpointPos.x, this.checkpointPos.y, 14);
+        showToast(`已从存档点「${this.checkpointLabel}」重生`);
+      }
+
+      handleReachGoal() {
+        if (this.isLevelEnded) return;
+        this.isLevelEnded = true;
+        this.player.setVelocity(0, 0);
+        this.player.play('girl_idle');
+        this.totalScore += GAME_CONFIG.scoring.levelClearBonus;
+        this.cpParticles.emitParticleAt(this.goalPortal.x, this.goalPortal.y, 30);
+        sfx.levelClear();
+        this.syncHUD();
+
+        const hasNext = this.currentLevelIndex < LEVEL_CONFIGS.length - 1;
+        showGameModal({
+          type: hasNext ? 'clear' : 'victory',
+          coins: `${this.coinsCollected} / ${this.totalCoinsInLevel}`,
+          score: this.totalScore
+        });
+      }
+
+      syncHUD() {
+        document.getElementById('ui-level-badge').textContent = `第 ${this.currentLevelIndex + 1} 关`;
+        document.getElementById('level-select').value = String(this.currentLevelIndex);
+        document.getElementById('ui-hp').textContent = `${this.hp}/${GAME_CONFIG.player.maxHp}`;
+        document.getElementById('ui-coins').textContent = `${this.coinsCollected}/${this.totalCoinsInLevel}`;
+        document.getElementById('ui-score').textContent = String(this.totalScore);
+        document.getElementById('ui-checkpoint').textContent = this.checkpointLabel;
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 模块 6：UI 控制器与 Phaser 实例引导
+     * ============================================================================
+     */
+    let gameInstance = null;
+    let toastTimer = null;
+
+    function getActiveScene() {
+      if (!gameInstance) return null;
+      return gameInstance.scene.getScene('GameScene');
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('game-toast');
+      const text = document.getElementById('game-toast-text');
+      if (!toast || !text) return;
+      text.textContent = message;
+      toast.classList.remove('opacity-0');
+      toast.classList.add('opacity-100');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+      }, 1800);
+    }
+
+    function showGameModal({ type, coins, score }) {
+      const modal = document.getElementById('game-modal');
+      const icon = document.getElementById('modal-icon');
+      const title = document.getElementById('modal-title');
+      const desc = document.getElementById('modal-desc');
+      const coinsEl = document.getElementById('modal-coins');
+      const scoreEl = document.getElementById('modal-score');
+      const btnPrimary = document.getElementById('modal-btn-primary');
+      const btnSecondary = document.getElementById('modal-btn-secondary');
+
+      coinsEl.textContent = coins;
+      scoreEl.textContent = String(score);
+
+      if (type === 'fail') {
+        icon.textContent = '💫';
+        title.textContent = '闯关失败';
+        desc.textContent = '别灰心！你可以直接从最近的存档点继续挑战，或重新开始本关。';
+        btnPrimary.textContent = '从存档点继续';
+        btnPrimary.dataset.action = 'checkpoint';
+        btnSecondary.textContent = '重开本关';
+        btnSecondary.dataset.action = 'restart';
+      } else if (type === 'clear') {
+        icon.textContent = '🌸';
+        title.textContent = '本关通过！';
+        desc.textContent = '清香茉莉相伴，准备好迎接下一关的移动浮桥挑战了吗？';
+        btnPrimary.textContent = '进入下一关 →';
+        btnPrimary.dataset.action = 'next';
+        btnSecondary.textContent = '重玩本关';
+        btnSecondary.dataset.action = 'restart';
+      } else {
+        icon.textContent = '🏆';
+        title.textContent = '全关卡完美通关！';
+        desc.textContent = '恭喜你带着视频中的白月光女孩走完了全部星夜旅程！';
+        btnPrimary.textContent = '从第 1 关再来一次';
+        btnPrimary.dataset.action = 'first';
+        btnSecondary.textContent = '重玩本关';
+        btnSecondary.dataset.action = 'restart';
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    function hideGameModal() {
+      document.getElementById('game-modal').classList.add('hidden');
+    }
+
+    function bindUIEvents() {
+      // 关卡下拉框切换
+      document.getElementById('level-select').addEventListener('change', (e) => {
+        const idx = parseInt(e.target.value, 10) || 0;
+        const scene = getActiveScene();
+        hideGameModal();
+        if (scene) {
+          scene.scene.restart({ levelIndex: idx, totalScore: scene.totalScore });
+        }
+      });
+
+      // 读档重试按钮
+      document.getElementById('btn-retry-cp').addEventListener('click', () => {
+        const scene = getActiveScene();
+        hideGameModal();
+        if (scene) {
+          if (scene.hp <= 0) scene.hp = GAME_CONFIG.player.maxHp;
+          scene.respawnAtCheckpoint();
+          scene.syncHUD();
+        }
+      });
+
+      // 重开本关按钮
+      document.getElementById('btn-restart').addEventListener('click', () => {
+        const scene = getActiveScene();
+        hideGameModal();
+        if (scene) {
+          scene.scene.restart({ levelIndex: scene.currentLevelIndex, totalScore: scene.totalScore });
+        }
+      });
+
+      // 音效静音切换
+      document.getElementById('btn-mute').addEventListener('click', (e) => {
+        const muted = sfx.toggleMute();
+        e.currentTarget.textContent = muted ? '🔇 静音' : '🔊 音效';
+      });
+
+      // 参数面板展开/收起
+      document.getElementById('btn-config-toggle').addEventListener('click', () => {
+        const drawer = document.getElementById('config-drawer');
+        drawer.classList.toggle('hidden');
+      });
+
+      // 弹窗按钮事件
+      document.getElementById('modal-btn-primary').addEventListener('click', (e) => {
+        const action = e.currentTarget.dataset.action;
+        const scene = getActiveScene();
+        hideGameModal();
+        if (!scene) return;
+
+        if (action === 'checkpoint') {
+          scene.hp = GAME_CONFIG.player.maxHp;
+          scene.respawnAtCheckpoint();
+          scene.syncHUD();
+        } else if (action === 'next') {
+          const nextIdx = Math.min(LEVEL_CONFIGS.length - 1, scene.currentLevelIndex + 1);
+          scene.scene.restart({ levelIndex: nextIdx, totalScore: scene.totalScore });
+        } else if (action === 'first') {
+          scene.scene.restart({ levelIndex: 0, totalScore: 0 });
+        }
+      });
+
+      document.getElementById('modal-btn-secondary').addEventListener('click', () => {
+        const scene = getActiveScene();
+        hideGameModal();
+        if (scene) {
+          scene.scene.restart({ levelIndex: scene.currentLevelIndex, totalScore: scene.totalScore });
+        }
+      });
+
+      // 实时参数滑块绑定
+      const bindSlider = (inputId, valId, applyFn) => {
+        const inp = document.getElementById(inputId);
+        const valSpan = document.getElementById(valId);
+        inp.addEventListener('input', () => {
+          const v = Number(inp.value);
+          valSpan.textContent = String(v);
+          applyFn(v);
+        });
+      };
+
+      bindSlider('inp-speed', 'val-speed', (v) => { GAME_CONFIG.player.runSpeed = v; });
+      bindSlider('inp-jump', 'val-jump', (v) => { GAME_CONFIG.player.jumpForce = v; });
+      bindSlider('inp-djump', 'val-djump', (v) => { GAME_CONFIG.player.doubleJumpForce = v; });
+      bindSlider('inp-gravity', 'val-gravity', (v) => {
+        GAME_CONFIG.gravityY = v;
+        const scene = getActiveScene();
+        if (scene && scene.physics && scene.physics.world) {
+          scene.physics.world.gravity.y = v;
+        }
+      });
+
+      document.getElementById('btn-reset-config').addEventListener('click', () => {
+        Object.assign(GAME_CONFIG.player, DEFAULT_CONFIG.player);
+        GAME_CONFIG.gravityY = DEFAULT_CONFIG.gravityY;
+        document.getElementById('inp-speed').value = DEFAULT_CONFIG.player.runSpeed;
+        document.getElementById('val-speed').textContent = String(DEFAULT_CONFIG.player.runSpeed);
+        document.getElementById('inp-jump').value = DEFAULT_CONFIG.player.jumpForce;
+        document.getElementById('val-jump').textContent = String(DEFAULT_CONFIG.player.jumpForce);
+        document.getElementById('inp-djump').value = DEFAULT_CONFIG.player.doubleJumpForce;
+        document.getElementById('val-djump').textContent = String(DEFAULT_CONFIG.player.doubleJumpForce);
+        document.getElementById('inp-gravity').value = DEFAULT_CONFIG.gravityY;
+        document.getElementById('val-gravity').textContent = String(DEFAULT_CONFIG.gravityY);
+        const scene = getActiveScene();
+        if (scene && scene.physics && scene.physics.world) {
+          scene.physics.world.gravity.y = DEFAULT_CONFIG.gravityY;
+        }
+        showToast('已恢复默认物理参数');
+      });
+
+      // 移动端/鼠标虚拟方向与跳跃按键绑定
+      const bindHoldButton = (btnId, keyName) => {
+        const btn = document.getElementById(btnId);
+        const startHold = (ev) => {
+          ev.preventDefault();
+          sfx.init();
+          btn.classList.add('active');
+          const scene = getActiveScene();
+          if (scene) scene.virtualInput[keyName] = true;
+        };
+        const endHold = (ev) => {
+          ev.preventDefault();
+          btn.classList.remove('active');
+          const scene = getActiveScene();
+          if (scene) scene.virtualInput[keyName] = false;
+        };
+        btn.addEventListener('pointerdown', startHold);
+        btn.addEventListener('pointerup', endHold);
+        btn.addEventListener('pointerleave', endHold);
+        btn.addEventListener('pointercancel', endHold);
+      };
+
+      bindHoldButton('touch-left', 'left');
+      bindHoldButton('touch-right', 'right');
+
+      const jumpBtn = document.getElementById('touch-jump');
+      jumpBtn.addEventListener('pointerdown', (ev) => {
+        ev.preventDefault();
+        sfx.init();
+        jumpBtn.classList.add('active');
+        const scene = getActiveScene();
+        if (scene) scene.virtualInput.jumpJustPressed = true;
+      });
+      const releaseJump = () => jumpBtn.classList.remove('active');
+      jumpBtn.addEventListener('pointerup', releaseJump);
+      jumpBtn.addEventListener('pointerleave', releaseJump);
+    }
+
+    window.addEventListener('load', () => {
+      bindUIEvents();
+      gameInstance = new Phaser.Game({
+        type: Phaser.CANVAS,
+        parent: 'phaser-container',
+        width: GAME_CONFIG.width,
+        height: GAME_CONFIG.height,
+        pixelArt: true,
+        roundPixels: true,
+        backgroundColor: '#0f172a',
+        physics: {
+          default: 'arcade',
+          arcade: {
+            gravity: { y: GAME_CONFIG.gravityY },
+            debug: false
+          }
+        },
+        scene: [GameScene]
+      });
+    });
+  </script>
+</body>
+</html>
